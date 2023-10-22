@@ -1,0 +1,4 @@
+C:\Users\鹤汀\source\repos\Compile\Debug\Compile.exe
+C:\Users\鹤汀\source\repos\CompileHomework1\Debug\Compile.exe
+C:\Users\鹤汀\source\repos\cphw2-1\Debug\Compile.exe
+C:\Users\鹤汀\source\repos\cpbhw1\Debug\Compile.exe

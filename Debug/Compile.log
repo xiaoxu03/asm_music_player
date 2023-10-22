@@ -1,0 +1,12 @@
+﻿  Assembling firstwork.asm...
+firstwork.asm(143): warning A4014: instructions and initialized data not supported in BSS segments
+firstwork.asm(200): warning A6004: procedure argument or local not referenced : hPrevInst
+firstwork.asm(200): warning A6004: procedure argument or local not referenced : CmdLine
+firstwork.asm(225): warning A6004: procedure argument or local not referenced : CmdShow
+firstwork.asm(350): warning A6004: procedure argument or local not referenced : lvc
+firstwork.asm(516): warning A6004: procedure argument or local not referenced : hWnd
+firstwork.asm(561): warning A6004: procedure argument or local not referenced : hWnd
+firstwork.asm(681): warning A6004: procedure argument or local not referenced : lpParam
+firstwork.asm(783): warning A6004: procedure argument or local not referenced : wmId
+  Compile.vcxproj -> C:\Users\鹤汀\source\repos\cpbhw1\Debug\Compile.exe
+D:\vcpkg\scripts\buildsystems\msbuild\vcpkg.targets(228,5): warning : [vcpkg] Failed to gather app local DLL dependencies, program may not run. Set VcpkgApplocalDeps to false in your project file to suppress this warning. PowerShell arguments: -ExecutionPolicy Bypass -noprofile -File "D:\vcpkg\scripts\buildsystems\msbuild\applocal.ps1" "C:\Users\鹤汀\source\repos\cpbhw1\Debug\Compile.exe" "D:\vcpkg\installed\x86-windows\debug\bin" "Debug\Compile.tlog\Compile.write.1u.tlog" "Debug\vcpkg.applocal.log"
