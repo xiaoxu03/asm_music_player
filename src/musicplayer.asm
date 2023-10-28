@@ -36,6 +36,19 @@ InitInstance proto:HINSTANCE,:DWORD
 
 
 .data
+play_status dword 0
+load_status dword 0
+
+NLOADED dword 0
+LOADED dword 1
+
+STOP dword 0
+PLAY dword 1
+PAUSE dword 2
+
+duration dword 100
+position dword 0
+
 szWindowClass db "MusicPlayer",0
 szTitle db "音乐播放器v1.0",0
 AppName db "音乐播放器v1.0", 0
@@ -47,7 +60,7 @@ text_button db "button", 0
 text_play db "开始播放", 0
 text_stop db "停止播放", 0
 text_pause db "暂停播放", 0
-text_resume db "重新开始", 0
+text_resume db "继续播放", 0
 text_repeat db "单曲循环", 0
 text_edit db "编辑",0
 text_opendir db "打开目录", 0
@@ -55,6 +68,27 @@ text_browse_folder db "Browse folder", 0
 text_listbox db "listbox", 0
 text_showtext db "文件列表",0
 
+sz_path db 1024 dup(0)
+sz_selected db 1024 dup(0)
+sz_music db 1024 dup(0)
+
+play_position db 128 dup(0)
+play_length db 128 dup(0)
+
+play_current 	db 128 dup(0)
+play_total 		db 128 dup(0)
+
+cmd_open db "open", 0
+cmd_play db "play music", 0
+cmd_alias db "alias", 0
+cmd_music db "music", 0
+cmd_pause db "pause music", 0
+cmd_resume db "resume music", 0
+cmd_stop db "close music", 0
+cmd_position db "status music position", 0
+cmd_length db "status music length", 0
+
+cmd db 1024 dup(0)
 
 find_dir_fmt db '%', 0, 's', 0, '\', 0, '*',0, 0, 0
 ; "%s\\*"
@@ -73,6 +107,11 @@ stopplay_fmt db '00:00', 0
 text_static db "static",0
 text_0000 db "00:00",0
 PROGRESSCLASS db "msctls_progress32",0
+
+lpsz_title db "请选择文件夹", 0
+
+error db "错误！", 0
+err_folder db "请打开目录文件夹", 0
 
 ; 控件的全局ID
 IDC_TEXT HMENU 206
@@ -102,6 +141,7 @@ hFileSelectBtn HWND ?
 hPauseBtn HWND ?
 hStopBtn HWND ?
 hRepeate HWND ?
+
 
 
 
@@ -202,7 +242,7 @@ start:
         invoke SendMessage, hListBox, WM_SETFONT, hFont, NULL
 
         ;创建进度条
-        invoke CreateWindowEx, 0,offset PROGRESSCLASS, NULL,
+        invoke CreateWindowEx, PBS_MARQUEE, offset PROGRESSCLASS, NULL,
               WS_CHILD or WS_VISIBLE,
               0, 0, 0, 0,
               hWnd, IDC_PROGRESSBAR, hInstance, NULL
@@ -386,21 +426,270 @@ start:
          ret
     ReSizeWindowControl endp
 
+; 定时更新进度条函数
+FlashProc PROC hWnd:HWND, uMsg:UINT, idEvent:DWORD, dwTime:DWORD
+    	; 在这里执行定时器触发时的操作
+   	invoke mciSendString, addr cmd_position, addr play_position, 128, 0
+    	invoke atol, addr play_position
+   	push eax
+    	invoke SendMessage, hProgressBar, PBM_SETPOS, eax, 0
+   	pop eax
+    	mov edx, 0
+  	mov ebx, 1000
+   	div ebx
+   	mov edx, 0
+    	mov ebx, 60
+    	div ebx
+	push edx
+	invoke ltoa, eax, addr play_current
+	pop edx
+	.if eax < 10
+		mov ebx, offset play_current
+		mov cl, 58
+		inc ebx
+		mov [ebx], cl
+		inc ebx
+		invoke ltoa, edx, ebx
+	.else 
+		mov ebx, offset play_current
+		mov cl, 58
+		inc ebx
+		mov [ebx], cl
+		inc ebx
+		invoke ltoa, edx, ebx
+	.endif
+	invoke SetWindowText, hCurrentTime, addr play_current
+    ret
+FlashProc ENDP
 
     ;窗口操作
     WndProc proc hWnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM 
+   	 LOCAL bi: BROWSEINFO
+   	 LOCAL find_data: WIN32_FIND_DATA 
+   	 LOCAL hFind: HWND
         .if uMsg == WM_DESTROY
-		    invoke PostQuitMessage,NULL
+		invoke PostQuitMessage,NULL
         ;创建控件
         .elseif uMsg == WM_CREATE
-		    invoke InitCommonControls
-		    invoke CreateWindowControl, hWnd
+		invoke InitCommonControls
+		invoke CreateWindowControl, hWnd
         ; 窗口变化大小
-	    .elseif uMsg == WM_SIZE
-		    invoke ReSizeWindowControl, hWnd
+	.elseif uMsg == WM_SIZE
+		invoke ReSizeWindowControl, hWnd
+	.elseif uMsg == WM_COMMAND
+	   	mov eax, wParam
+	   	.if eax == IDC_FILESELECTBTN
+	   		; 选择文件夹窗口创建配置
+		    	mov bi.hwndOwner, NULL
+		    	mov bi.ulFlags, BIF_EDITBOX
+		    	mov bi.lpszTitle, offset lpsz_title
+		    	mov bi.pszDisplayName, offset sz_path
+		    	mov bi.pidlRoot, NULL
+		    	mov bi.lpfn, NULL
+		    	mov bi.lParam, 0
+		    	mov bi.iImage, NULL
+		    	invoke SHBrowseForFolder, addr bi
+		    	.if eax
+		    		invoke SHGetPathFromIDList, eax, addr sz_path
+		    		
+		    		mov ebx, offset sz_path
+		    		.while ebx
+		    			mov cl, [ebx]
+		    			.if cl == 0
+		    				jmp outside
+		    			.endif
+		    			inc ebx
+				.endw
+				
+			outside:
+				mov cl, 92
+				mov [ebx], cl
+				inc ebx
+				mov cl, 42
+				mov [ebx], cl
+				inc ebx
+				mov cl, 0
+				mov [ebx], cl
+				
+		    		invoke FindFirstFile, addr sz_path, addr find_data
+		    		.if eax == INVALID_HANDLE_VALUE
+		    			invoke MessageBox, hWnd, addr szTitle, addr text_showtext, NULL
+		    			je fail
+		    		.endif
+		    		mov hFind, eax
+		    	show_name:
+		    		invoke SendMessage, hListBox, LB_ADDSTRING, 0, addr find_data.cFileName
+		    		invoke FindNextFile, hFind, addr find_data
+		    		.if eax == FALSE
+		    			mov ebx, LOADED
+		    			mov load_status, ebx
+		 			jmp fail
+		    		.endif
+		    		jmp show_name
+		    	.else
+		    		; 报错：非法路径
+		    		invoke MessageBox, hWnd, addr sz_path, addr text_showtext, NULL
+		    		
+		    	.endif
+		    	fail:
+		    	
+		.elseif eax == IDC_PLAYBTN
+			mov ebx, load_status
+			.if ebx != LOADED
+				invoke MessageBox, hWnd, addr err_folder, addr error, NULL
+				jmp err
+			.endif
+			invoke SendMessage, hListBox, LB_GETCURSEL, 0, 0
+			invoke SendMessage, hListBox, LB_GETTEXT, eax, addr sz_selected
+			mov eax, offset sz_path
+			mov ebx, offset sz_music
+			mov cl, [eax]
+			.while cl != 42
+				mov [ebx], cl
+				inc eax
+				inc ebx
+				mov cl, [eax]
+			.endw
+			mov eax, offset sz_selected
+			mov cl, [eax]
+			.while cl != 0
+				mov [ebx], cl
+				inc eax
+				inc ebx
+				mov cl, [eax]
+			.endw
+			mov [ebx], cl
+			
+			
+		play:
+			mov eax, offset cmd
+			mov ebx, offset cmd_open
+			
+			mov cl, [ebx]
+			.while cl != 0
+				mov [eax], cl
+				inc eax
+				inc ebx
+				mov cl, [ebx]
+			.endw
+			
+			mov dl, 32
+			mov [eax], dl
+			inc eax
+			
+			mov ebx, offset sz_music
+			mov cl, [ebx]
+			.while cl != 0
+				mov [eax], cl
+				inc eax
+				inc ebx
+				mov cl, [ebx]
+			.endw
+			
+			mov dl, 32
+			mov [eax], dl
+			inc eax
+			
+			mov ebx, offset cmd_alias
+			mov cl, [ebx]
+			.while cl != 0
+				mov [eax], cl
+				inc eax
+				inc ebx
+				mov cl, [ebx]
+			.endw
+			
+			mov dl, 32
+			mov [eax], dl
+			inc eax
+			
+			mov ebx, offset cmd_music
+			mov cl, [ebx]
+			.while cl != 0
+				mov [eax], cl
+				inc eax
+				inc ebx
+				mov cl, [ebx]
+			.endw
+			
+			mov dl, 0
+			mov [eax], dl
+			
+			invoke mciSendString, addr cmd, 0, 0, 0
+			invoke SendMessage, hRepeate, BM_GETCHECK, 0, 0
+			.if eax == TRUE
+				invoke mciSendString, addr cmd_play_repeat, 0, 0, 0
+			.else
+				invoke mciSendString, addr cmd_play, 0, 0, 0
+			.endif
+			mov ebx, PLAY
+			mov play_status, ebx
+			invoke mciSendString, addr cmd_length, addr play_length, 128, 0
+			invoke MessageBox, hWnd, addr play_length, addr cmd_length, NULL
+			
+			invoke atol, addr play_length
+			push eax
+			invoke SendMessage, hProgressBar, PBM_SETRANGE32, 0, eax
+			pop eax
+			mov edx, 0
+			mov ebx, 1000
+			div ebx
+			mov edx, 0
+			mov ebx, 60
+			div ebx
+			push edx
+			invoke ltoa, eax, addr play_total
+			pop edx
+			.if eax < 10
+				mov ebx, offset play_total
+				mov cl, 58
+				inc ebx
+				mov [ebx], cl
+				inc ebx
+				invoke ltoa, edx, ebx
+			.else 
+				mov ebx, offset play_total
+				mov cl, 58
+				inc ebx
+				mov [ebx], cl
+				inc ebx
+				invoke ltoa, edx, ebx
+			.endif
+			invoke SetWindowText, hTotalTime, addr play_total
+			
+			invoke SetTimer, NULL, 0, 500, FlashProc
+			
+		.elseif eax == IDC_PAUSEBTN
+			mov ebx, play_status
+			.if ebx == PLAY
+				invoke mciSendString, addr cmd_pause, 0, 0, 0
+				invoke SetWindowText, hPauseBtn, addr text_resume
+				mov edx, PAUSE
+				mov play_status, edx
+			.elseif ebx == PAUSE
+				invoke mciSendString, addr cmd_resume, 0, 0, 0
+				invoke SetWindowText, hPauseBtn, addr text_pause
+				mov edx, PLAY
+				mov play_status, edx
+			.endif
+		.elseif eax == IDC_STOPBTN
+			mov ebx, play_status
+			; 正在播放的情况下，直接停止
+			.if ebx == PLAY
+				invoke mciSendString, addr cmd_stop, 0, 0, 0
+				mov edx, STOP
+				mov play_status, edx
+			.elseif ebx == PAUSE
+				invoke mciSendString, addr cmd_stop, 0, 0, 0
+				invoke SetWindowText, hPauseBtn, addr text_pause
+				mov edx, STOP
+				mov play_status, edx
+			.endif
+	   	.endif
 	    .else
 		    invoke DefWindowProc, hWnd, uMsg, wParam, lParam 
 	    .endif
+	    err:
         ret 
     WndProc endp
     end start
