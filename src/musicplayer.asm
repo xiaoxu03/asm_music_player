@@ -87,6 +87,8 @@ cmd_resume db "resume music", 0
 cmd_stop db "close music", 0
 cmd_position db "status music position", 0
 cmd_length db "status music length", 0
+cmd_mode db "status music mode", 0
+cmd_seek db "seek music to start", 0
 
 cmd db 1024 dup(0)
 
@@ -459,6 +461,19 @@ FlashProc PROC hWnd:HWND, uMsg:UINT, idEvent:DWORD, dwTime:DWORD
 		invoke ltoa, edx, ebx
 	.endif
 	invoke SetWindowText, hCurrentTime, addr play_current
+	
+	invoke SendMessage, hRepeate, BM_GETCHECK, 0, 0
+	.if eax == TRUE
+		invoke atol, addr play_position
+		push eax
+		invoke atol, addr play_length
+		mov ebx, eax
+		pop eax
+		.if eax == ebx
+			invoke mciSendString, addr cmd_seek, 0, 0, 0
+			invoke mciSendString, addr cmd_play, 0, 0, 0
+		.endif
+	.endif
     ret
 FlashProc ENDP
 
@@ -479,6 +494,7 @@ FlashProc ENDP
 	.elseif uMsg == WM_COMMAND
 	   	mov eax, wParam
 	   	.if eax == IDC_FILESELECTBTN
+	   		invoke SendMessage, hListBox, LB_RESETCONTENT, 0, 0
 	   		; 选择文件夹窗口创建配置
 		    	mov bi.hwndOwner, NULL
 		    	mov bi.ulFlags, BIF_EDITBOX
@@ -513,11 +529,22 @@ FlashProc ENDP
 				
 		    		invoke FindFirstFile, addr sz_path, addr find_data
 		    		.if eax == INVALID_HANDLE_VALUE
-		    			invoke MessageBox, hWnd, addr szTitle, addr text_showtext, NULL
 		    			je fail
 		    		.endif
 		    		mov hFind, eax
 		    	show_name:
+		    		lea eax, find_data.cFileName
+		    		mov ebx, 0
+		    		mov cl, [eax]
+		    		.while cl != 0
+		    			inc ebx
+		    			inc eax
+		    			mov cl, [eax]
+		    		.endw
+		    		.if ebx < 4
+		    			invoke FindNextFile, hFind, addr find_data
+		    			jmp show_name
+		    		.endif
 		    		invoke SendMessage, hListBox, LB_ADDSTRING, 0, addr find_data.cFileName
 		    		invoke FindNextFile, hFind, addr find_data
 		    		.if eax == FALSE
@@ -528,7 +555,6 @@ FlashProc ENDP
 		    		jmp show_name
 		    	.else
 		    		; 报错：非法路径
-		    		invoke MessageBox, hWnd, addr sz_path, addr text_showtext, NULL
 		    		
 		    	.endif
 		    	fail:
@@ -562,6 +588,13 @@ FlashProc ENDP
 			
 			
 		play:
+			mov eax, play_status
+			.if eax != STOP
+				invoke mciSendString, addr cmd_stop, 0, 0, 0
+				invoke SetWindowText, hPauseBtn, addr text_pause
+				mov edx, STOP
+				mov play_status, edx
+			.endif
 			mov eax, offset cmd
 			mov ebx, offset cmd_open
 			
@@ -616,16 +649,10 @@ FlashProc ENDP
 			mov [eax], dl
 			
 			invoke mciSendString, addr cmd, 0, 0, 0
-			invoke SendMessage, hRepeate, BM_GETCHECK, 0, 0
-			.if eax == TRUE
-				invoke mciSendString, addr cmd_play_repeat, 0, 0, 0
-			.else
-				invoke mciSendString, addr cmd_play, 0, 0, 0
-			.endif
+			invoke mciSendString, addr cmd_play, 0, 0, 0
 			mov ebx, PLAY
 			mov play_status, ebx
 			invoke mciSendString, addr cmd_length, addr play_length, 128, 0
-			invoke MessageBox, hWnd, addr play_length, addr cmd_length, NULL
 			
 			invoke atol, addr play_length
 			push eax

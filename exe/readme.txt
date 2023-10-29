@@ -1,2 +1,2 @@
 直接使用命令行运行exe文件夹中可执行文件即可。
-若需要编译，请将src中.asm文件复制至visual studio/radasm中任意已配置完毕的项目中运行。
+若需要编译，请使用RadASM v2.2.4打开src中的MusicPlayer.rap编译运行。
