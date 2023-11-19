@@ -97,7 +97,8 @@ cmd_position db "status music position", 0
 cmd_length db "status music length", 0
 cmd_mode db "status music mode", 0
 cmd_seek db "seek music to start", 0
-seek_format db "seek music to %d",0
+cmd_seek_detail db 1024 dup(0)
+seek_format db "seek music to %d", 0
 
 cmd db 1024 dup(0)
 
@@ -140,6 +141,7 @@ IDC_REPEATELIST HMENU 216
 IDC_NREPEATE HMENU 217
 IDC_REPEATERAND HMENU 218
 IDC_FILENAME HMENU 219
+IDC_TIMER HMENU 220
 
 
 .data?
@@ -162,8 +164,6 @@ hRepeateList HWND ?
 hNRepeate HWND ?
 hRepeateRand HWND ?
 hFileName HWND ?
-
-
 
 
 .code
@@ -262,7 +262,7 @@ start:
         mov hListBox, eax
         invoke SendMessage, hListBox, WM_SETFONT, hFont, NULL
 
-		;创建当前文件文本框
+	;创建当前文件文本框
         invoke CreateWindowEx, 0, offset text_static, offset text_filename,
               WS_CHILD or WS_VISIBLE or SS_CENTER,
               0, 0, 0, 0,
@@ -281,6 +281,7 @@ start:
 		mov eax, 100
 		shl eax, 16
 		invoke SendMessage, hProgressBar, TBM_SETRANGE, TRUE, eax
+            	invoke SendMessage, hProgressBar, TBM_SETPAGESIZE, 0, 1
         ;创建当前时间文本框
         invoke CreateWindowEx, 0, offset text_static, offset text_0000,
               WS_CHILD or WS_VISIBLE or SS_RIGHT,
@@ -565,7 +566,7 @@ start:
 FlashProc PROC hWnd:HWND, uMsg:UINT, idEvent:DWORD, dwTime:DWORD
     	; 在这里执行定时器触发时的操作
    	invoke mciSendString, addr cmd_position, addr play_position, 128, 0
-    invoke atol, addr play_position
+	invoke atol, addr play_position
 		; 设置滑块控件的位置
    	push eax
 		;movzx eax,play_position
@@ -829,7 +830,7 @@ SelectPlay PROC
 			.endif
 			invoke SetWindowText, hTotalTime, addr play_total
 			invoke SetWindowText, hFileName, addr sz_selected
-			invoke SetTimer, NULL, 0, 500, FlashProc
+			invoke SetTimer, NULL, IDC_TIMER, 500, FlashProc
 SelectPlay ENDP
 
 
@@ -849,34 +850,24 @@ WndProc proc hWnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
 	.elseif uMsg == WM_SIZE
 		invoke ReSizeWindowControl, hWnd
 	.elseif uMsg == WM_HSCROLL
-		invoke GetDlgCtrlID, lParam
-    	.if eax == IDC_PROGRESSBAR
-			; 暂停音乐播放
-			invoke mciSendString, addr cmd_pause, 0, 0, 0
-			invoke SetWindowText, hPauseBtn, addr text_resume
-			mov edx, PAUSER
-			mov play_status, edx
-
-            ; 获取进度条的新位置
-            invoke SendMessage, hProgressBar, TBM_GETPOS, 0, 0
-            ; 将进度条的位置转换为音乐的播放时间
-            ; 这里假设进度条的范围是 0 到 100，音乐的长度是 total_length
-            imul eax, total_length
-            xor edx, edx
+  		invoke GetDlgCtrlID, lParam
+    		.if eax == IDC_PROGRESSBAR
+          		; 获取进度条的新位置
+            		invoke SendMessage, hProgressBar, TBM_GETPOS, 0, 0
+            		; 将进度条的位置转换为音乐的播放时间
+            		; 这里假设进度条的范围是 0 到 100，音乐的长度是 total_length
+            		imul eax, total_length
+            		xor edx, edx
 			mov ecx, 100
 			idiv ecx
-            mov new_time, eax
-            ; 构造 seek 命令
-            invoke wsprintf, addr cmd_seek, addr seek_format, new_time
-			invoke mciSendString, addr cmd_resume, 0, 0, 0
-			invoke SetWindowText, hPauseBtn, addr text_pause
-				mov edx, PLAY
-				mov play_status, edx
-            ; 将音乐的播放位置设置为新的时间
-            invoke mciSendString, addr cmd_seek, 0, 0, 0
-            ; 继续播放音乐
-            invoke mciSendString, addr cmd_play, 0, 0, 0
-		.endif
+            		mov new_time, eax
+            		; 构造 seek 命令
+            		invoke wsprintf, addr cmd_seek_detail, addr seek_format, new_time
+            		; 将音乐的播放位置设置为新的时间
+            		invoke mciSendString, addr cmd_seek_detail, 0, 0, 0
+            		; 继续播放音乐
+            		invoke mciSendString, addr cmd_play, 0, 0, 0
+            	.endif
 	.elseif uMsg == WM_COMMAND
 	   	mov eax, wParam
 	   	.if eax == IDC_FILESELECTBTN
@@ -941,11 +932,8 @@ WndProc proc hWnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
 		    		jmp show_name
 		    	.else
 		    		; 报错：非法路径
-		    		
 		    	.endif
 		    	fail:
-		
-		    	
 		.elseif eax == IDC_PLAYBTN
 			mov ebx, load_status
 			.if ebx != LOADED
